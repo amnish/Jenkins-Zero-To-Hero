@@ -1,0 +1,55 @@
+pipeline{
+    agent{
+        docker {
+            image 'abhishekf5/maven-abhishek-docker-agent:v1'
+            args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    enviroment {
+        credentialsId = credentials('git-hub')
+    }
+    stages{
+        stage("Checkout")
+            steps{
+                git credentialsId: "$github"
+                URL: 'https://github.com/amnish/Jenkins-Zero-To-Hero.git'
+                branch: 'main'
+            }
+        stage("build docker image")
+            steps{
+                sh '''
+                cd Jenkins-Zero-To-Hero\python-jenkins-argocd-k8s
+                echo 'Build docker iamge
+                docker build -t amnishkumar/pythonimage:$(BUILD_NUMBER)'''
+            }
+        stage("push the image to docker registry")
+            steps{
+                sh '''
+                echo 'Push image to docker registry'
+                echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                docker push amnishkumar/pythonimage:$(BUILD_NUMBER)
+                '''
+            }
+        stage("checkout SCM for K8S manifest")
+            steps{
+                git credentialsId: "$github"
+                URL: https://github.com/amnish/Jenkins-Zero-To-Hero.git
+                branch: 'main'
+            }
+        stage("update the deployment file")
+            steps{
+                sh 'cd Jenkins-Zero-To-Hero\python-jenkins-manifests'
+                script{
+                    withCredentials([usernamePassword(usernamePassword: "$github")])
+                    sh '''
+                    cat  deployment.yaml
+                    sed -i '' "s/32/${BUILD_NUMBER}/g deployment.yaml
+                    git add deploy.yaml
+                    git commit -m 'Updated the deploy yaml | Jenkins Pipeline'
+                    git remote -v
+                    git push 'https://github.com/amnish/Jenkins-Zero-To-Hero.git' HEAD:main'''
+                }
+            }
+
+    }
+    }
+}
